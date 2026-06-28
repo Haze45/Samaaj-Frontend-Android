@@ -40,7 +40,11 @@ class ChatViewModel @Inject constructor(
         if (communityId == -1) return
         viewModelScope.launch {
             _askState.value = Resource.Loading()
-            _askState.value = repository.askQuestion(communityId, question)
+            val result = repository.askQuestion(communityId, question)
+            _askState.value = result
+            if (result is Resource.Success) {
+                repository.syncHistory(communityId)
+            }
         }
     }
 

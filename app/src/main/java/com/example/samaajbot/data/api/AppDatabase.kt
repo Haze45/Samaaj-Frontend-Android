@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChatDao {
-    @Query("SELECT * FROM chat_messages WHERE communityId = :communityId ORDER BY id ASC")
+    @Query("SELECT * FROM chat_messages WHERE communityId = :communityId ORDER BY createdAt ASC")
     fun getMessages(communityId: Int): Flow<List<ChatMessageEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

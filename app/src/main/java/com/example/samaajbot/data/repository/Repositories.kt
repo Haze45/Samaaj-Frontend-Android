@@ -109,6 +109,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun askQuestion(communityId: Int, question: String): Resource<ChatMessageEntity> {
         return try {
+//            val tempId = -(System.currentTimeMillis() % Int.MAX_VALUE).toInt()
             val tempUserMsg = ChatMessageEntity(
                 id = System.currentTimeMillis().toInt(),
                 communityId = communityId,
