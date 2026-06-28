@@ -1,0 +1,40 @@
+# ── Android Studio / IntelliJ ─────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ── Gradle build outputs ──────────────────────────────
+.gradle/
+build/
+app/build/
+/local.properties
+
+# ── APK and release files ─────────────────────────────
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ── Keystore and signing files ────────────────────────
+*.jks
+*.keystore
+key.properties
+release/
+
+# ── Gradle wrapper jar (binary) ───────────────────────
+gradle/wrapper/gradle-wrapper.jar
+*.jar
+
+# ── Logs and temp files ───────────────────────────────
+*.log
+*.tmp
+*.temp
+
+# ── Google Services ───────────────────────────────────
+google-services.json
+
+# ── OS generated files ────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
