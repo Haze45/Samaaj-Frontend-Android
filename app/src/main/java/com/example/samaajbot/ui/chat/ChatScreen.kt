@@ -1,6 +1,7 @@
 package com.example.samaajbot.ui.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,8 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.samaajbot.data.models.ChatMessageEntity
@@ -27,7 +28,6 @@ import com.example.samaajbot.ui.theme.BotBubbleTextDark
 import com.example.samaajbot.ui.theme.UserBubble
 import com.example.samaajbot.ui.theme.UserBubbleText
 import com.example.samaajbot.utils.Resource
-import androidx.compose.foundation.isSystemInDarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,24 +39,42 @@ fun ChatScreen(
     onDocuments: () -> Unit,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
-    val messages by viewModel.messages.collectAsState()
-    val askState by viewModel.askState.collectAsState()
+    val messages       by viewModel.messages.collectAsState()
+    val askState       by viewModel.askState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val listState = rememberLazyListState()
-    val isLoading = askState is Resource.Loading
-    var inputText by remember { mutableStateOf("") }
+    val listState      = rememberLazyListState()
+    val isLoading      = askState is Resource.Loading
+
+    var inputText       by remember { mutableStateOf("") }
+    var pendingQuestion by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(communityId) { viewModel.init(communityId) }
-
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    // Initialise viewmodel with community id
+    LaunchedEffect(communityId) {
+        viewModel.init(communityId)
     }
 
+    // Scroll to bottom whenever messages change or loading state changes
+    LaunchedEffect(messages.size, isLoading) {
+        val itemCount = messages.size + if (isLoading && pendingQuestion.isNotBlank()) 2 else 0
+        if (itemCount > 0) {
+            listState.animateScrollToItem(itemCount - 1)
+        }
+    }
+
+    // Handle ask state changes
     LaunchedEffect(askState) {
         when (val state = askState) {
-            is Resource.Error -> { snackbarHostState.showSnackbar(state.message); viewModel.resetAskState() }
-            is Resource.Success -> viewModel.resetAskState()
+            is Resource.Success -> {
+                // Clear pending question — real messages now loaded from server
+                pendingQuestion = ""
+                viewModel.resetAskState()
+            }
+            is Resource.Error -> {
+                pendingQuestion = ""
+                snackbarHostState.showSnackbar(state.message)
+                viewModel.resetAskState()
+            }
             else -> {}
         }
     }
@@ -67,9 +85,12 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(communityName, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Ask anything about community docs",
+                            text = communityName,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Ask anything about community docs",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                         )
@@ -77,18 +98,27 @@ fun ChatScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onPrimary)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
                 },
                 actions = {
                     IconButton(onClick = onDocuments) {
-                        Icon(Icons.Default.Description, contentDescription = "Documents",
-                            tint = MaterialTheme.colorScheme.onPrimary)
+                        Icon(
+                            Icons.Default.Description,
+                            contentDescription = "Documents",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
                     IconButton(onClick = { showClearDialog = true }) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear History",
-                            tint = MaterialTheme.colorScheme.onPrimary)
+                        Icon(
+                            Icons.Default.DeleteSweep,
+                            contentDescription = "Clear History",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -118,15 +148,17 @@ fun ChatScreen(
                         shape = RoundedCornerShape(24.dp),
                         enabled = !isLoading,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            focusedBorderColor   = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outline
                         )
                     )
                     Spacer(Modifier.width(8.dp))
                     FilledIconButton(
                         onClick = {
-                            if (inputText.isNotBlank()) {
-                                viewModel.askQuestion(inputText.trim())
+                            val question = inputText.trim()
+                            if (question.isNotBlank() && !isLoading) {
+                                pendingQuestion = question  // show immediately on right
+                                viewModel.askQuestion(question)
                                 inputText = ""
                             }
                         },
@@ -137,20 +169,27 @@ fun ChatScreen(
                         if (isLoading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                color    = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send"
+                            )
                         }
                     }
                 }
             }
         }
     ) { padding ->
-        if (messages.isEmpty() && !isLoading) {
+
+        // Empty state
+        if (messages.isEmpty() && !isLoading && pendingQuestion.isBlank()) {
             Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -170,41 +209,69 @@ fun ChatScreen(
                         "Questions are answered from\ncommunity documents.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
                 }
             }
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Real messages from server (already in correct order)
                 items(messages, key = { it.id }) { message ->
                     MessageBubble(message = message)
                 }
-                if (isLoading) {
-                    item {
+
+                // Show pending question on RIGHT while waiting for answer
+                // This prevents the flash — no temp DB entry, just UI state
+                if (isLoading && pendingQuestion.isNotBlank()) {
+                    item(key = "pending_question") {
+                        MessageBubble(
+                            message = ChatMessageEntity(
+                                id           = -1,
+                                communityId  = communityId,
+                                userId       = 0,
+                                role         = "user",
+                                content      = pendingQuestion,
+                                sourceDoc    = null,
+                                createdAt    = ""
+                            )
+                        )
+                    }
+                    item(key = "typing_indicator") {
                         TypingIndicator()
                     }
                 }
+
                 item { Spacer(Modifier.height(8.dp)) }
             }
         }
     }
 
+    // Clear history dialog
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            title = { Text("Clear History") },
-            text = { Text("Delete all chat messages for this community?") },
+            title   = { Text("Clear History") },
+            text    = { Text("Delete all chat messages for this community?") },
             confirmButton = {
-                TextButton(onClick = { viewModel.clearHistory(); showClearDialog = false }) {
+                TextButton(onClick = {
+                    viewModel.clearHistory()
+                    showClearDialog = false
+                }) {
                     Text("Clear", color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }
@@ -218,6 +285,7 @@ fun MessageBubble(message: ChatMessageEntity) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
+        // Bot avatar on the left
         if (!isUser) {
             Box(
                 modifier = Modifier
@@ -226,8 +294,11 @@ fun MessageBubble(message: ChatMessageEntity) {
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Text("S", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(
+                    "S",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             }
             Spacer(Modifier.width(8.dp))
         }
@@ -236,14 +307,15 @@ fun MessageBubble(message: ChatMessageEntity) {
             modifier = Modifier.widthIn(max = 300.dp),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
+            // Message bubble
             Box(
                 modifier = Modifier
                     .clip(
                         RoundedCornerShape(
-                            topStart = 18.dp,
-                            topEnd = 18.dp,
+                            topStart    = 18.dp,
+                            topEnd      = 18.dp,
                             bottomStart = if (isUser) 18.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 18.dp
+                            bottomEnd   = if (isUser) 4.dp else 18.dp
                         )
                     )
                     .background(
@@ -253,19 +325,20 @@ fun MessageBubble(message: ChatMessageEntity) {
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Text(
-                    text = message.content,
+                    text  = message.content,
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (isUser) UserBubbleText
                     else if (isDark) BotBubbleTextDark else BotBubbleText
                 )
             }
 
+            // Source citation below bot message
             if (!message.sourceDoc.isNullOrBlank()) {
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Source: ${message.sourceDoc}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontStyle = FontStyle.Italic),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text     = "Source: ${message.sourceDoc}",
+                    style    = MaterialTheme.typography.labelSmall.copy(fontStyle = FontStyle.Italic),
+                    color    = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
             }
@@ -286,8 +359,11 @@ fun TypingIndicator() {
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
-            Text("S", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(
+                "S",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
         }
         Spacer(Modifier.width(8.dp))
         Box(

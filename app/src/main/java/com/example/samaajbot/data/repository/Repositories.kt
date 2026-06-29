@@ -124,7 +124,8 @@ class ChatRepository @Inject constructor(
             val r = api.askQuestion(ChatRequest(communityId, question))
             if (r.isSuccessful && r.body() != null) {
                 val botMsg = r.body()!!.toEntity()
-                chatDao.insertMessage(botMsg)
+                syncHistory(communityId)
+//                chatDao.insertMessage(botMsg)
                 Resource.Success(botMsg)
             } else Resource.Error(r.errorBody()?.string() ?: "Failed to get answer")
         } catch (e: Exception) { Resource.Error(e.message ?: "Network error") }
