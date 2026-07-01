@@ -1,5 +1,10 @@
 package com.example.samaajbot.ui.chat
 
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -16,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,6 +34,7 @@ import com.example.samaajbot.ui.theme.BotBubbleTextDark
 import com.example.samaajbot.ui.theme.UserBubble
 import com.example.samaajbot.ui.theme.UserBubbleText
 import com.example.samaajbot.utils.Resource
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,34 +46,66 @@ fun ChatScreen(
     onDocuments: () -> Unit,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
-    val messages       by viewModel.messages.collectAsState()
-    val askState       by viewModel.askState.collectAsState()
+    val messages          by viewModel.messages.collectAsState()
+    val askState          by viewModel.askState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val listState      = rememberLazyListState()
-    val isLoading      = askState is Resource.Loading
+    val listState         = rememberLazyListState()
+    val isLoading         = askState is Resource.Loading
 
-    var inputText       by remember { mutableStateOf("") }
-    var pendingQuestion by remember { mutableStateOf("") }
-    var showClearDialog by remember { mutableStateOf(false) }
+    var inputText         by remember { mutableStateOf("") }
+    var pendingQuestion   by remember { mutableStateOf("") }
+    var showClearDialog   by remember { mutableStateOf(false) }
+    var isListening       by remember { mutableStateOf(false) }
 
-    // Initialise viewmodel with community id
+    // ── Voice input launcher ───────────────────────────────────────────────
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        isListening = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenText = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spokenText.isNullOrBlank()) {
+                // Append spoken text to existing input text
+                inputText = if (inputText.isBlank()) spokenText
+                else "$inputText $spokenText"
+            }
+        }
+    }
+
+    // Function to launch voice recogniser
+    fun startVoiceInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Ask your question...")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        isListening = true
+        voiceLauncher.launch(intent)
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
+    // Initialise ViewModel with community id
     LaunchedEffect(communityId) {
         viewModel.init(communityId)
     }
 
-    // Scroll to bottom whenever messages change or loading state changes
+    // Scroll to bottom when messages change or loading starts
     LaunchedEffect(messages.size, isLoading) {
-        val itemCount = messages.size + if (isLoading && pendingQuestion.isNotBlank()) 2 else 0
-        if (itemCount > 0) {
-            listState.animateScrollToItem(itemCount - 1)
-        }
+        val itemCount = messages.size +
+                if (isLoading && pendingQuestion.isNotBlank()) 2 else 0
+        if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
     }
 
     // Handle ask state changes
     LaunchedEffect(askState) {
         when (val state = askState) {
             is Resource.Success -> {
-                // Clear pending question — real messages now loaded from server
                 pendingQuestion = ""
                 viewModel.resetAskState()
             }
@@ -86,11 +125,11 @@ fun ChatScreen(
                 title = {
                     Column {
                         Text(
-                            text = communityName,
+                            text  = communityName,
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = "Ask anything about community docs",
+                            text  = "Ask anything about community docs",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                         )
@@ -128,7 +167,7 @@ fun ChatScreen(
         },
         bottomBar = {
             Surface(
-                tonalElevation = 8.dp,
+                tonalElevation  = 8.dp,
                 shadowElevation = 8.dp
             ) {
                 Row(
@@ -140,36 +179,67 @@ fun ChatScreen(
                     verticalAlignment = Alignment.Bottom
                 ) {
                     OutlinedTextField(
-                        value = inputText,
+                        value         = inputText,
                         onValueChange = { inputText = it },
-                        placeholder = { Text("Ask a question...") },
-                        modifier = Modifier.weight(1f),
-                        maxLines = 4,
-                        shape = RoundedCornerShape(24.dp),
-                        enabled = !isLoading,
-                        colors = OutlinedTextFieldDefaults.colors(
+                        placeholder   = { Text("Ask a question...") },
+                        modifier      = Modifier.weight(1f),
+                        maxLines      = 4,
+                        shape         = RoundedCornerShape(24.dp),
+                        enabled       = !isLoading,
+                        colors        = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor   = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outline
                         )
                     )
-                    Spacer(Modifier.width(8.dp))
+
+                    Spacer(Modifier.width(6.dp))
+
+                    // ── Mic button ────────────────────────────────────────
+                    FilledTonalIconButton(
+                        onClick  = { startVoiceInput() },
+                        enabled  = !isLoading && !isListening,
+                        modifier = Modifier.size(52.dp),
+                        shape    = RoundedCornerShape(16.dp),
+                        colors   = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = if (isListening)
+                                MaterialTheme.colorScheme.errorContainer
+                            else
+                                MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Icon(
+                            imageVector = if (isListening)
+                                Icons.Default.MicOff
+                            else
+                                Icons.Default.Mic,
+                            contentDescription = if (isListening) "Listening..." else "Voice input",
+                            tint = if (isListening)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    Spacer(Modifier.width(6.dp))
+
+                    // ── Send button ───────────────────────────────────────
                     FilledIconButton(
                         onClick = {
                             val question = inputText.trim()
                             if (question.isNotBlank() && !isLoading) {
-                                pendingQuestion = question  // show immediately on right
+                                pendingQuestion = question
                                 viewModel.askQuestion(question)
                                 inputText = ""
                             }
                         },
-                        enabled = inputText.isNotBlank() && !isLoading,
+                        enabled  = inputText.isNotBlank() && !isLoading,
                         modifier = Modifier.size(52.dp),
-                        shape = RoundedCornerShape(16.dp)
+                        shape    = RoundedCornerShape(16.dp)
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color    = MaterialTheme.colorScheme.onPrimary,
+                                modifier    = Modifier.size(20.dp),
+                                color       = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp
                             )
                         } else {
@@ -187,7 +257,7 @@ fun ChatScreen(
         // Empty state
         if (messages.isEmpty() && !isLoading && pendingQuestion.isBlank()) {
             Box(
-                modifier = Modifier
+                modifier        = Modifier
                     .fillMaxSize()
                     .padding(padding),
                 contentAlignment = Alignment.Center
@@ -197,7 +267,7 @@ fun ChatScreen(
                         Icons.Default.Chat,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        tint     = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
@@ -206,40 +276,58 @@ fun ChatScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "Questions are answered from\ncommunity documents.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        "Type or speak your question.\nAnswers come from community documents.",
+                        style     = MaterialTheme.typography.bodyMedium,
+                        color     = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         textAlign = TextAlign.Center
                     )
+                    Spacer(Modifier.height(12.dp))
+                    // Mic hint
+                    Row(
+                        verticalAlignment    = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Mic,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint     = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "Tap the mic button to speak",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
         } else {
             LazyColumn(
-                state = listState,
-                modifier = Modifier
+                state           = listState,
+                modifier        = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding  = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Real messages from server (already in correct order)
+                // Real messages from server in correct order
                 items(messages, key = { it.id }) { message ->
                     MessageBubble(message = message)
                 }
 
-                // Show pending question on RIGHT while waiting for answer
-                // This prevents the flash — no temp DB entry, just UI state
+                // Pending question bubble + typing indicator while loading
                 if (isLoading && pendingQuestion.isNotBlank()) {
                     item(key = "pending_question") {
                         MessageBubble(
                             message = ChatMessageEntity(
-                                id           = -1,
-                                communityId  = communityId,
-                                userId       = 0,
-                                role         = "user",
-                                content      = pendingQuestion,
-                                sourceDoc    = null,
-                                createdAt    = ""
+                                id          = -1,
+                                communityId = communityId,
+                                userId      = 0,
+                                role        = "user",
+                                content     = pendingQuestion,
+                                sourceDoc   = null,
+                                createdAt   = ""
                             )
                         )
                     }
@@ -282,13 +370,12 @@ fun MessageBubble(message: ChatMessageEntity) {
     val isDark = isSystemInDarkTheme()
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier              = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        // Bot avatar on the left
         if (!isUser) {
             Box(
-                modifier = Modifier
+                modifier        = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer),
@@ -304,10 +391,9 @@ fun MessageBubble(message: ChatMessageEntity) {
         }
 
         Column(
-            modifier = Modifier.widthIn(max = 300.dp),
+            modifier           = Modifier.widthIn(max = 300.dp),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
-            // Message bubble
             Box(
                 modifier = Modifier
                     .clip(
@@ -332,12 +418,12 @@ fun MessageBubble(message: ChatMessageEntity) {
                 )
             }
 
-            // Source citation below bot message
             if (!message.sourceDoc.isNullOrBlank()) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text     = "Source: ${message.sourceDoc}",
-                    style    = MaterialTheme.typography.labelSmall.copy(fontStyle = FontStyle.Italic),
+                    style    = MaterialTheme.typography.labelSmall
+                        .copy(fontStyle = FontStyle.Italic),
                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
@@ -349,11 +435,11 @@ fun MessageBubble(message: ChatMessageEntity) {
 @Composable
 fun TypingIndicator() {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier              = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
     ) {
         Box(
-            modifier = Modifier
+            modifier        = Modifier
                 .size(32.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.primaryContainer),
@@ -374,7 +460,8 @@ fun TypingIndicator() {
         ) {
             Text(
                 "Thinking...",
-                style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+                style = MaterialTheme.typography.bodyMedium
+                    .copy(fontStyle = FontStyle.Italic),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

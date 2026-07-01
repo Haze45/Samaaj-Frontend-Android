@@ -88,7 +88,14 @@ fun DocumentsScreen(
                 FloatingActionButton(
                     onClick = {
                         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                            type = "application/pdf"
+                            type = "*/*"
+                            putExtra(
+                                Intent.EXTRA_MIME_TYPES, arrayOf(
+                                    "application/pdf",
+                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                                )
+                            )
                         }
                         pdfPicker.launch(intent)
                     },

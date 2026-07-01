@@ -12,6 +12,7 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import javax.inject.Inject
 
+// ── Auth Repository ───────────────────────────────────────────────────────────
 class AuthRepository @Inject constructor(
     private val api: SamaajBotApi,
     private val sessionManager: SessionManager
@@ -38,7 +39,9 @@ class AuthRepository @Inject constructor(
     suspend fun logout() = sessionManager.clearSession()
 }
 
+// ── Community Repository ──────────────────────────────────────────────────────
 class CommunityRepository @Inject constructor(private val api: SamaajBotApi) {
+
     suspend fun createCommunity(name: String, desc: String?): Resource<CommunityResponse> {
         return try {
             val r = api.createCommunity(CommunityCreateRequest(name, desc))
@@ -72,7 +75,9 @@ class CommunityRepository @Inject constructor(private val api: SamaajBotApi) {
     }
 }
 
+// ── Document Repository ───────────────────────────────────────────────────────
 class DocumentRepository @Inject constructor(private val api: SamaajBotApi) {
+
     suspend fun uploadDocument(communityId: Int, file: File): Resource<DocumentResponse> {
         return try {
             val requestFile = file.asRequestBody("application/pdf".toMediaTypeOrNull())
@@ -100,32 +105,24 @@ class DocumentRepository @Inject constructor(private val api: SamaajBotApi) {
     }
 }
 
+// ── Chat Repository ───────────────────────────────────────────────────────────
 class ChatRepository @Inject constructor(
     private val api: SamaajBotApi,
     private val chatDao: ChatDao
 ) {
+    // UI observes this Flow — updates automatically when Room data changes
     fun getLocalMessages(communityId: Int): Flow<List<ChatMessageEntity>> =
         chatDao.getMessages(communityId)
 
     suspend fun askQuestion(communityId: Int, question: String): Resource<ChatMessageEntity> {
         return try {
-//            val tempId = -(System.currentTimeMillis() % Int.MAX_VALUE).toInt()
-            val tempUserMsg = ChatMessageEntity(
-                id = System.currentTimeMillis().toInt(),
-                communityId = communityId,
-                userId = 0,
-                role = "user",
-                content = question,
-                sourceDoc = null,
-                createdAt = java.time.LocalDateTime.now().toString()
-            )
-            chatDao.insertMessage(tempUserMsg)
-
             val r = api.askQuestion(ChatRequest(communityId, question))
             if (r.isSuccessful && r.body() != null) {
                 val botMsg = r.body()!!.toEntity()
+                // Clear local cache first then sync fresh from server
+                // This prevents duplicate messages appearing in the UI
+//                chatDao.clearMessages(communityId)
                 syncHistory(communityId)
-//                chatDao.insertMessage(botMsg)
                 Resource.Success(botMsg)
             } else Resource.Error(r.errorBody()?.string() ?: "Failed to get answer")
         } catch (e: Exception) { Resource.Error(e.message ?: "Network error") }
@@ -134,9 +131,11 @@ class ChatRepository @Inject constructor(
     suspend fun syncHistory(communityId: Int) {
         try {
             val r = api.getChatHistory(communityId)
-            if (r.isSuccessful && r.body() != null)
-                chatDao.clearMessages(communityId)
+            if (r.isSuccessful && r.body() != null) {
+                // Always clear before inserting to prevent duplicates
+//                chatDao.clearMessages(communityId)
                 chatDao.insertMessages(r.body()!!.map { it.toEntity() })
+            }
         } catch (_: Exception) {}
     }
 
@@ -151,6 +150,12 @@ class ChatRepository @Inject constructor(
     }
 
     private fun ChatMessageResponse.toEntity() = ChatMessageEntity(
-        id, communityId, userId, role, content, sourceDoc, createdAt
+        id          = id,
+        communityId = communityId,
+        userId      = userId,
+        role        = role,
+        content     = content,
+        sourceDoc   = sourceDoc,
+        createdAt   = createdAt
     )
 }
