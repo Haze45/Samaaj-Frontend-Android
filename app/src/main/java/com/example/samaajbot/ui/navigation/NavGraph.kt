@@ -3,7 +3,6 @@ package com.example.samaajbot.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -15,13 +14,26 @@ import com.example.samaajbot.ui.chat.ChatScreen
 import com.example.samaajbot.ui.community.HomeScreen
 import com.example.samaajbot.ui.documents.DocumentsScreen
 import com.example.samaajbot.utils.SessionManager
-import javax.inject.Inject
 
 @Composable
-fun NavGraph(sessionManager: SessionManager) {
+fun NavGraph(
+    sessionManager: SessionManager,
+    // community_id passed from notification tap (-1 if opened normally)
+    notificationCommunityId: Int = -1
+) {
     val navController = rememberNavController()
     val token by sessionManager.token.collectAsState(initial = null)
-    val startDestination = if (token != null) Screen.Home.route else Screen.Login.route
+
+    // If user is logged in and came from notification → go straight to chat
+    // Otherwise → go to home or login as normal
+    val startDestination = when {
+        token != null && notificationCommunityId != -1 ->
+            Screen.Home.route  // go to home first, then navigate to chat below
+        token != null ->
+            Screen.Home.route
+        else ->
+            Screen.Login.route
+    }
 
     NavHost(navController = navController, startDestination = startDestination) {
 
@@ -39,7 +51,7 @@ fun NavGraph(sessionManager: SessionManager) {
         composable(Screen.Register.route) {
             RegisterScreen(
                 onRegisterSuccess = { navController.popBackStack() },
-                onGoToLogin = { navController.popBackStack() }
+                onGoToLogin       = { navController.popBackStack() }
             )
         }
 
@@ -52,6 +64,11 @@ fun NavGraph(sessionManager: SessionManager) {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
                     }
+                },
+                // If app was opened from notification, auto-navigate to that community
+                notificationCommunityId = notificationCommunityId,
+                onNotificationNavigate  = { id, name, isAdmin ->
+                    navController.navigate(Screen.Chat.createRoute(id, name, isAdmin))
                 }
             )
         }
@@ -59,21 +76,22 @@ fun NavGraph(sessionManager: SessionManager) {
         composable(
             route = Screen.Chat.route,
             arguments = listOf(
-                navArgument("communityId") { type = NavType.IntType },
+                navArgument("communityId")   { type = NavType.IntType },
                 navArgument("communityName") { type = NavType.StringType },
-                navArgument("isAdmin") { type = NavType.BoolType }
+                navArgument("isAdmin")       { type = NavType.BoolType }
             )
         ) { backStackEntry ->
-            val communityId   = backStackEntry.arguments?.getInt("communityId") ?: 0
+            val communityId   = backStackEntry.arguments?.getInt("communityId")    ?: 0
             val communityName = backStackEntry.arguments?.getString("communityName") ?: ""
-            val isAdmin       = backStackEntry.arguments?.getBoolean("isAdmin") ?: false
+            val isAdmin       = backStackEntry.arguments?.getBoolean("isAdmin")    ?: false
             ChatScreen(
                 communityId   = communityId,
                 communityName = communityName,
-                isAdmin       = isAdmin,
                 onBack        = { navController.popBackStack() },
                 onDocuments   = {
-                    navController.navigate(Screen.Documents.createRoute(communityId, communityName, isAdmin))
+                    navController.navigate(
+                        Screen.Documents.createRoute(communityId, communityName, isAdmin)
+                    )
                 }
             )
         }
@@ -81,14 +99,14 @@ fun NavGraph(sessionManager: SessionManager) {
         composable(
             route = Screen.Documents.route,
             arguments = listOf(
-                navArgument("communityId") { type = NavType.IntType },
+                navArgument("communityId")   { type = NavType.IntType },
                 navArgument("communityName") { type = NavType.StringType },
-                navArgument("isAdmin") { type = NavType.BoolType }
+                navArgument("isAdmin")       { type = NavType.BoolType }
             )
         ) { backStackEntry ->
-            val communityId   = backStackEntry.arguments?.getInt("communityId") ?: 0
+            val communityId   = backStackEntry.arguments?.getInt("communityId")    ?: 0
             val communityName = backStackEntry.arguments?.getString("communityName") ?: ""
-            val isAdmin       = backStackEntry.arguments?.getBoolean("isAdmin") ?: false
+            val isAdmin       = backStackEntry.arguments?.getBoolean("isAdmin")    ?: false
             DocumentsScreen(
                 communityId   = communityId,
                 communityName = communityName,

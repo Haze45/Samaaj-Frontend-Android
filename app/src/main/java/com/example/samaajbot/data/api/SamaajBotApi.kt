@@ -59,4 +59,7 @@ interface SamaajBotApi {
 
     @DELETE("chat/history/{communityId}")
     suspend fun clearHistory(@Path("communityId") communityId: Int): Response<MessageResponse>
+
+    @POST("auth/fcm-token")
+    suspend fun updateFcmToken(@Body request: FCMTokenRequest): Response<MessageResponse>
 }

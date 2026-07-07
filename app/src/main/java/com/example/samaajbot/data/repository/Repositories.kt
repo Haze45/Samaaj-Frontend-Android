@@ -11,6 +11,11 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import javax.inject.Inject
+import com.example.samaajbot.data.models.FCMTokenRequest
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 // ── Auth Repository ───────────────────────────────────────────────────────────
 class AuthRepository @Inject constructor(
@@ -31,6 +36,19 @@ class AuthRepository @Inject constructor(
             if (r.isSuccessful && r.body() != null) {
                 val b = r.body()!!
                 sessionManager.saveSession(b.accessToken, b.userId, b.name, b.email)
+
+                // Send FCM token to backend after login
+                try {
+                    FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                        CoroutineScope(Dispatchers.IO).launch {
+                            api.updateFcmToken(FCMTokenRequest(token))
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Non-critical — token will be sent on next app start
+                    e.printStackTrace()
+                }
+
                 Resource.Success("Login successful")
             } else Resource.Error("Invalid email or password")
         } catch (e: Exception) { Resource.Error(e.message ?: "Network error") }

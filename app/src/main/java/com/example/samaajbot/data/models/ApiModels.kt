@@ -54,3 +54,7 @@ data class ChatMessageResponse(
 )
 
 data class MessageResponse(val message: String)
+
+data class FCMTokenRequest(
+    @SerializedName("fcm_token") val fcmToken: String
+)

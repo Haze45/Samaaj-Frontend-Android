@@ -4,11 +4,14 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "samaajbot_prefs")
 
@@ -35,4 +38,16 @@ class SessionManager @Inject constructor(
     }
 
     suspend fun clearSession() = context.dataStore.edit { it.clear() }
+
+    suspend fun getFcmToken(): String? {
+        return suspendCancellableCoroutine { continuation ->
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    if (continuation.isActive) continuation.resume(token)
+                }
+                .addOnFailureListener {
+                    if (continuation.isActive) continuation.resume(null)
+                }
+        }
+    }
 }
