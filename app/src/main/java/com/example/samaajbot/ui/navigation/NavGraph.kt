@@ -87,6 +87,7 @@ fun NavGraph(
             ChatScreen(
                 communityId   = communityId,
                 communityName = communityName,
+                isAdmin       = isAdmin,
                 onBack        = { navController.popBackStack() },
                 onDocuments   = {
                     navController.navigate(
